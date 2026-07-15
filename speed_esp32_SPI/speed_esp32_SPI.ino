@@ -23,7 +23,7 @@ TinyGPSPlus gps;
 #define TXPin 26 // Zmieniony pin TX
 #define GPSBaud 9600
 
-// Utworzenie obiektu dla serialu GPS
+// Utworzenie obiektu dla portu szeregowego GPS
 HardwareSerial SerialGPS(1);
 
 // Zmienne do śledzenia dziennego przebiegu
@@ -33,10 +33,10 @@ double lastLng = 0.0;
 bool alarmActive = false;
 
 void setup() {
-  // Inicjalizacja serial monitor
+  // Inicjalizacja monitora portu szeregowego
   Serial.begin(115200);
 
-  // Inicjalizacja serial dla GPS
+  // Inicjalizacja portu szeregowego dla GPS
   SerialGPS.begin(GPSBaud, SERIAL_8N1, RXPin, TXPin);
 
   // Inicjalizacja wyświetlacza OLED SPI

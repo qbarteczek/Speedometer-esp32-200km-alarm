@@ -1,24 +1,27 @@
-#include <Wire.h>
+#include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <TinyGPS++.h>
 
-// Definicje dla wyświetlacza OLED I2C
+// Definicje dla wyświetlacza OLED SPI
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_RESET    -1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+#define OLED_RESET    D4 // Reset pin
+#define OLED_DC       D2
+#define OLED_CS       D1
+#define OLED_CLK      D5 // SCK
+#define OLED_MOSI     D7 // SDA (MOSI)
+#define OLED_MISO     -1 // Nie używany, podłącz do GND
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, OLED_DC, OLED_RESET, OLED_CS);
 
 // Obiekt dla TinyGPS++
 TinyGPSPlus gps;
 
 // Ustawienia dla GPS
-#define RXPin 16
-#define TXPin 17
+#define RXPin D6 // Zmieniony pin RX
+#define TXPin D8 // Zmieniony pin TX
 #define GPSBaud 9600
-
-// Utworzenie obiektu dla serialu GPS
-HardwareSerial SerialGPS(1);
 
 // Zmienne do śledzenia dziennego przebiegu
 double dailyDistance = 0.0;
@@ -26,15 +29,21 @@ double lastLat = 0.0;
 double lastLng = 0.0;
 bool alarmActive = false;
 
+// Przykładowa bitmapa (ikona GPS)
+const uint8_t gpsIcon[] PROGMEM = {
+  0x00, 0x1C, 0x22, 0x41, 0x49, 0x55, 0x22, 0x1C
+};
+
 void setup() {
-  // Inicjalizacja serial monitor
+  // Inicjalizacja monitora portu szeregowego
   Serial.begin(115200);
 
-  // Inicjalizacja serial dla GPS
-  SerialGPS.begin(GPSBaud, SERIAL_8N1, RXPin, TXPin);
+  // Inicjalizacja portu szeregowego dla GPS
+  Serial.swap(); // Zamienia piny RX i TX na D6 i D7
+  Serial.begin(GPSBaud);
 
-  // Inicjalizacja wyświetlacza OLED I2C
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  // Inicjalizacja wyświetlacza OLED SPI
+  if (!display.begin(SSD1306_SWITCHCAPVCC)) {
     Serial.println(F("SSD1306 allocation failed"));
     for (;;);
   }
@@ -49,8 +58,8 @@ void setup() {
 
 void loop() {
   // Odczyt danych z GPS
-  while (SerialGPS.available() > 0) {
-    gps.encode(SerialGPS.read());
+  while (Serial.available() > 0) {
+    gps.encode(Serial.read());
   }
 
   // Aktualizacja przebiegu dziennego
@@ -139,6 +148,9 @@ void loop() {
   display.setTextSize(1);
   display.setCursor((SCREEN_WIDTH / 2) + 20, (SCREEN_HEIGHT / 2) - 8);
   display.print(" km/h");
+
+  // Wyświetlanie ikony GPS
+  display.drawBitmap(0, (SCREEN_HEIGHT / 2) - 8, gpsIcon, 8, 8, SSD1306_WHITE);
 
   // Alarmowanie o konieczności odpoczynku
   if (alarmActive) {
