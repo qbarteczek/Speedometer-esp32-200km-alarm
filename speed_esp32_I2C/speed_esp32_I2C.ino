@@ -47,106 +47,107 @@ void setup() {
   lastLng = gps.location.lng();
 }
 
+// Zmienna do płynnego odświeżania ekranu (bez migotania)
+unsigned long lastDisplayUpdate = 0;
+const unsigned long DISPLAY_INTERVAL = 500; // 2 klatki na sekundę
+
 void loop() {
-  // Odczyt danych z GPS
+  // 1. Asynchroniczny odczyt danych z GPS
   while (SerialGPS.available() > 0) {
     gps.encode(SerialGPS.read());
   }
 
-  // Aktualizacja przebiegu dziennego
+  // 2. Aktualizacja przebiegu dziennego (z filtrem anty-driftowym)
   if (gps.location.isValid() && gps.location.isUpdated()) {
     if (lastLat != 0.0 && lastLng != 0.0) {
-      double distance = TinyGPSPlus::distanceBetween(
-        lastLat, lastLng,
-        gps.location.lat(), gps.location.lng()
-      );
-      dailyDistance += distance / 1000.0; // Przeliczenie na kilometry
+      // Zabezpieczenie przed naliczaniem "przebiegu widmo" na postoju
+      if (gps.speed.isValid() && gps.speed.kmph() > 3.0) {
+        double distance = TinyGPSPlus::distanceBetween(
+          lastLat, lastLng,
+          gps.location.lat(), gps.location.lng()
+        );
+        dailyDistance += distance / 1000.0; // Przeliczenie na kilometry
+      }
     }
     lastLat = gps.location.lat();
     lastLng = gps.location.lng();
   }
 
-  // Sprawdzanie, czy alarm powinien być aktywowany
-  if (dailyDistance >= 200.0 && gps.speed.kmph() > 0) {
+  // 3. Sprawdzanie, czy alarm powinien być aktywowany
+  if (dailyDistance >= 200.0 && gps.speed.isValid() && gps.speed.kmph() > 0) {
     alarmActive = true;
   }
-
   // Wyłączanie alarmu po zatrzymaniu
-  if (gps.speed.kmph() == 0) {
+  if (gps.speed.isValid() && gps.speed.kmph() < 1.0) {
     alarmActive = false;
   }
 
-  // Wyświetlanie informacji na OLED
-  display.clearDisplay();
+  // 4. Płynne odświeżanie OLED (co 500 ms)
+  if (millis() - lastDisplayUpdate >= DISPLAY_INTERVAL) {
+    lastDisplayUpdate = millis();
 
-  // Wyświetlanie liczby widocznych satelitów w lewym górnym rogu
-  display.setCursor(0, 0);
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  if (gps.satellites.isValid()) {
-    display.print("Sat: ");
-    display.print(gps.satellites.value());
-  } else {
-    display.print("Sat: N/A");
-  }
+    display.clearDisplay();
 
-  // Wyświetlanie wysokości nad poziomem morza w prawym górnym rogu
-  display.setCursor(SCREEN_WIDTH - 64, 0);
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  if (gps.altitude.isValid()) {
-    display.print("Alt: ");
-    display.print(gps.altitude.meters());
-    display.print(" m");
-  } else {
-    display.print("Alt: N/A");
-  }
-
-  // Wyświetlanie czasu z korekcją dla Polski (UTC+2) w lewym dolnym rogu
-  display.setCursor(0, SCREEN_HEIGHT - 8);
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  if (gps.time.isValid()) {
-    int hour = (gps.time.hour() + 2) % 24;
-    if (hour < 10) display.print('0');
-    display.print(hour);
-    display.print(":");
-    if (gps.time.minute() < 10) display.print('0');
-    display.print(gps.time.minute());
-    display.print(":");
-    if (gps.time.second() < 10) display.print('0');
-    display.print(gps.time.second());
-  } else {
-    display.print("Time: N/A");
-  }
-
-  // Wyświetlanie dziennego licznika kilometrów w prawym dolnym rogu
-  display.setCursor(SCREEN_WIDTH - 64, SCREEN_HEIGHT - 8);
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.print("KM: ");
-  display.print(dailyDistance, 1);
-
-  // Wyświetlanie prędkości w centralnym miejscu wyświetlacza
-  display.setCursor((SCREEN_WIDTH / 2) - 20, (SCREEN_HEIGHT / 2) - 8);
-  display.setTextSize(2);
-  display.setTextColor(SSD1306_WHITE);
-  if (gps.speed.isValid()) {
-    display.print(gps.speed.kmph());
-  } else {
-    display.print("N/A");
-  }
-  display.setTextSize(1);
-  display.setCursor((SCREEN_WIDTH / 2) + 20, (SCREEN_HEIGHT / 2) - 8);
-  display.print(" km/h");
-
-  // Alarmowanie o konieczności odpoczynku
-  if (alarmActive) {
-    display.setCursor(0, SCREEN_HEIGHT / 2 + 16);
+    // Wyświetlanie liczby widocznych satelitów w lewym górnym rogu
+    display.setCursor(0, 0);
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.print("Odpocznij!");
-  }
+    if (gps.satellites.isValid()) {
+      display.print("Sat: ");
+      display.print(gps.satellites.value());
+    } else {
+      display.print("Sat: ---");
+    }
 
-  display.display();
+    // Wyświetlanie wysokości nad poziomem morza w prawym górnym rogu
+    display.setCursor(SCREEN_WIDTH - 64, 0);
+    if (gps.altitude.isValid()) {
+      display.print("Alt: ");
+      display.print(gps.altitude.meters(), 0);
+      display.print("m");
+    } else {
+      display.print("Alt: ---");
+    }
+
+    // Wyświetlanie czasu z korekcją dla Polski (UTC+2) w lewym dolnym rogu
+    display.setCursor(0, SCREEN_HEIGHT - 8);
+    if (gps.time.isValid()) {
+      int hour = (gps.time.hour() + 2) % 24;
+      if (hour < 10) display.print('0');
+      display.print(hour);
+      display.print(":");
+      if (gps.time.minute() < 10) display.print('0');
+      display.print(gps.time.minute());
+      display.print(":");
+      if (gps.time.second() < 10) display.print('0');
+      display.print(gps.time.second());
+    } else {
+      display.print("Time: --:--");
+    }
+
+    // Wyświetlanie dziennego licznika kilometrów w prawym dolnym rogu
+    display.setCursor(SCREEN_WIDTH - 64, SCREEN_HEIGHT - 8);
+    display.print("KM: ");
+    display.print(dailyDistance, 1);
+
+    // Wyświetlanie prędkości w centralnym miejscu wyświetlacza
+    display.setCursor((SCREEN_WIDTH / 2) - 20, (SCREEN_HEIGHT / 2) - 8);
+    display.setTextSize(2);
+    if (gps.speed.isValid()) {
+      display.print(gps.speed.kmph(), 0);
+    } else {
+      display.print("---");
+    }
+    display.setTextSize(1);
+    display.setCursor((SCREEN_WIDTH / 2) + 20, (SCREEN_HEIGHT / 2) - 8);
+    display.print(" km/h");
+
+    // Alarmowanie o konieczności odpoczynku
+    if (alarmActive) {
+      display.setCursor(0, SCREEN_HEIGHT / 2 + 16);
+      display.print("Odpocznij!");
+    }
+
+    display.display();
+  }
 }
